@@ -2,7 +2,7 @@
 
 _Analysis and Interpretations_
 
-![original!](Original Data.png)
+![original!](Original Data.jpg)
 
 # Original Data
 a)Data points are seperated by an interval of 10 mins.
