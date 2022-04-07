@@ -7,15 +7,15 @@ import matplotlib.pyplot as plt
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from sklearn.preprocessing import PowerTransformer, StandardScaler
-from sklearn.metrics import mean_squared_error
 from scipy import stats
 from pmdarima import model_selection
 
+from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-import os; os.chdir('/home/jagsy/PycharmProjects/insta/gfk/Neo team hiring home task')
+import os; os.chdir('/home/jagsy/PycharmProjects/insta/GFK/Neo team hiring home task')
 
 # Convert the data from 10 minute to hourly interval
 
@@ -89,6 +89,12 @@ def box_cox(data):
 box_cox_train = box_cox(data_train)
 box_cox_test = box_cox(data_test)
 
+#De-trending the series
+Ma = box_cox_train - box_cox_train.rolling(24).mean()
+Ma = Ma.dropna()
+plot_acf(Ma, lags=50, zero=False, )
+plt.title('Autocorrelation De-Trended Series')
+plt.show()
 
 # data transformation
 data_train_differenced = box_cox_train.diff().dropna()
@@ -101,6 +107,11 @@ plt.plot(transformed_differenced_seasonal)
 plt.title('Seasonally differenced data')
 plt.show()
 
+transformed_differenced_seasonal_test = box_cox_test.diff().diff(24).dropna()
+plt.plot(transformed_differenced_seasonal_test)
+plt.title('Seasonally differenced test data')
+plt.show()
+
 # Check the Seasonality of the Data with Augmented Dickey-Fuller Test. If the p-value of the test is less
 # than 5%, the time series is stationary.
 adk = adfuller(data_train_differenced)
@@ -111,28 +122,36 @@ print(adk)
 # Seasonal Arima can be used to model the time series with seasonal value of 24..
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8,8))
-plot_acf(data_train_differenced, lags=50, zero=False, ax=ax1)
+plot_acf(data_train_differenced, lags=100, zero=False, ax=ax1)
 plt.title('Autocorrelation')
-plot_pacf(data_train_differenced, lags=50, zero=False, ax=ax2)
+plot_pacf(data_train_differenced, lags=100, zero=False, ax=ax2)
 plt.title('Partial Autocorrelation')
 plt.show()
 
 
 fig, (axx1, axx2) = plt.subplots(2, 1, figsize=(8,8))
-plot_acf(transformed_differenced_seasonal, lags=50, zero=False, ax=axx1)
+plot_acf(transformed_differenced_seasonal, lags=100, zero=False, ax=axx1)
 plt.title('Seasonal Autocorrelation')
-plot_pacf(transformed_differenced_seasonal, lags=50, zero=False, ax=axx2)
+plot_pacf(transformed_differenced_seasonal, lags=100, zero=False, ax=axx2)
 plt.title('Seasonal Partial Autocorrelation')
 plt.show()
 
 # Decomposition of the time series for observing different components such as Trend, Seasonality and Residual
-decomposition = sm.tsa.seasonal_decompose(box_cox_train)
+decomposition = sm.tsa.seasonal_decompose(box_cox_train, period=24)
 
 # Decomposing all the components and visualize them
 decomposition.plot()
+plt.show()
 
-model = SARIMAX(data_train, order=(1,0,1), seasonal_order=(0,1,1,24),)
-results = model.fit(maxiter=50)
+# mod = ARIMA(transformed_differenced_seasonal, order=(0,0,1))
+# res = mod.fit()
+# predict_arima = res.predict(start='2018-08-13 15:00:00', end='2018-08-31 23:00:00',)
+# predict_arima.plot()
+# plt.show()
+
+
+model = SARIMAX(box_cox_train, order=(1,0,1), seasonal_order=(5,0,1,24),)
+results = model.fit(maxiter=100)
 print(results.summary())
 print('Mean Residual of SARIMA is: ', results.resid.mean())
 results.plot_diagnostics()
@@ -140,16 +159,16 @@ plt.show()
 
 future_forecast = results.get_prediction(start='2018-08-13 15:00:00', end='2018-08-31 23:00:00', )
 predictions = future_forecast.predicted_mean
-print(predictions, data_test.num_orders,)
-rmse = np.sqrt((predictions - data_test.num_orders) ** 2).mean()
-print("\\nRMSE of ARIMA model is: ",rmse)
+print(predictions, box_cox_test.num_orders,)
+rmse = np.sqrt((predictions - box_cox_test.num_orders) ** 2).mean()
+print("\\nRMSE of SARIMA model is: ",rmse)
 
 forecast = results.get_forecast(steps=48)
 ci = forecast.conf_int()
 
-figs = data_train.plot(label = 'Original')
+figs = box_cox_train.plot(label = 'Original')
 figs.set_xlabel('Date')
-figs.set_ylabel('Sales')
+figs.set_ylabel('Bookings')
 figs.fill_between(ci.index, ci.iloc[:,0], ci.iloc[:, 1], color='k', alpha=.2)
 
 predictions.plot(ax=figs, label='Predictions', alpha=.7)
@@ -159,22 +178,23 @@ plt.show()
 
 # Holtz Winter Exponential Smoothing for dealing with Seasonality and Trend
 
-hwmodel = ExponentialSmoothing(data_train, trend='add', seasonal='mul',
-                               seasonal_periods=24).fit()
+hwmodel = ExponentialSmoothing(box_cox_train, trend='add', seasonal='add',
+                               seasonal_periods=24, ).fit()
+predictions_hw_exp = hwmodel.predict(start=box_cox_test.index[0], end=box_cox_test.index[-1])
+predictions_forecast = hwmodel.forecast(48)
 
-predictions_hw = hwmodel.forecast(48)
-
-data_test.plot(legend=True, label = 'Test', color='blue')
-predictions_hw.plot( label='Predictions HW', alpha=.7, color='green')
+box_cox_test.plot(legend=True, label = 'Test', color='blue')
+predictions_hw_exp.plot( label='Predictions HW', alpha=.7, color='green')
+predictions_forecast.plot( label='Forecast', alpha=.7, color='red')
 
 plt.legend()
 plt.show()
 
 
-print("RMSE of the Exponential Average Model is: ", np.sqrt(mean_squared_error(data_test, predictions_hw)))
+print("RMSE of the Exponential Average Model is: ", np.sqrt((predictions_hw_exp - box_cox_test.num_orders) ** 2).mean())
 
 import itertools
-p = d = q = range(0,2)
+p = d = q = range(0,6)
 
 pdq = list(itertools.product(p,d,q))
 seasonal_pdq = [(x[0], x[1], x[2], 24) for x in list(itertools.product(p,d,q))]
@@ -184,7 +204,7 @@ seasonal_pdq = [(x[0], x[1], x[2], 24) for x in list(itertools.product(p,d,q))]
 # order_aic_bic = []
 # for pm in pdq:
 #     for pm_seasonal in seasonal_pdq:
-#         model = SARIMAX(data_train, order=pm, seasonal_order=pm_seasonal)
+#         model = SARIMAX(box_cox_train, order=pm, seasonal_order=pm_seasonal)
 #         results = model.fit()
 #         order_aic_bic.append((pm, pm_seasonal, results.aic, results.bic))
 #         print('\n\n')
