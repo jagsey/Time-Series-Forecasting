@@ -2,7 +2,8 @@
 
 _Analysis and Interpretations_
 
-![ORG!](https://github.com/jagsey/Time-Series-Forecasting/tree/master/Figures_1/Original_Data.png)
+![Original_Data](https://user-images.githubusercontent.com/103120317/162107984-19f150a3-3a14-4ca8-b055-f56c0a34978f.png)
+
 
 # Original Data
 a)Data points are seperated by an interval of 10 mins.
